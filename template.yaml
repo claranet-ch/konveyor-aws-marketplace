@@ -1,0 +1,400 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Cloudformation Template for Konveyor on a Microk8s single-node cluster
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      ImageId: GENERATED_IMAGE_ID
+    us-east-2: 
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    us-west-2: 
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    us-gov-west-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    us-gov-east-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ca-central-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-central-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-central-2:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-west-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-west-2:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-west-3:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-north-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-south-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    eu-south-2:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    af-south-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-southeast-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-southeast-2:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-southeast-3:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-southeast-4:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-south-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-south-2:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-northeast-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-northeast-2:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-northeast-3:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    ap-east-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    sa-east-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    me-south-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+    me-central-1:
+      ImageId: ami-xxxxxxxxxxxxxxxxx
+
+Parameters:
+  Domain:
+    Type: String
+    Description: Application Domain Name (i.e. konveyor.example.org)
+  ACMArn:
+    Type: String
+    Description: Existing AWS SSL Certificate Arn for the chosen domain name (i.e. konveyor.example.org).
+  InstanceType:
+    Type: String
+    Default: t3a.medium
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC'
+  
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicRouteTable'
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+
+  InternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Description: Internet gateway attachment to the VPC
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  InternetRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateRouteTable'
+
+  # Subnets ---
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+          - 0
+          - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet1'
+
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+          - 1
+          - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet2'
+
+  PublicSubnet1RouteTblAscn:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTblAscn:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+          - 0
+          - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.0.2.0/24
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateSubnet1'
+
+  PrivateSubnet1RouteTblAscn:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1
+
+  # NAT Gateway ---
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+        AllocationId: !GetAtt NATGatewayEIP.AllocationId
+        SubnetId: !Ref PublicSubnet1
+        Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-NatGateway'
+          
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+  RouteNATGateway:
+    DependsOn: NATGateway
+    Type: AWS::EC2::Route
+    Properties:
+        RouteTableId: !Ref PrivateRouteTable
+        DestinationCidrBlock: '0.0.0.0/0'
+        NatGatewayId: !Ref NATGateway
+
+  # Security group ---
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Vpc
+      GroupDescription: 'Security group for web server instances'
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-WebServerSG'
+
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets: 
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      IpAddressType: ipv4
+    DependsOn: InternetRoute
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Vpc
+      GroupDescription: 'Security group for load balancers'
+      SecurityGroupIngress:
+        - FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+          CidrIp: '0.0.0.0/0'
+        - FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-LoadBalancerSG'
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      Port: 80
+      Protocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: '/healthcheck/index.html'
+      HealthCheckPort: '80'
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: 'deregistration_delay.timeout_seconds'
+          Value: 10
+      Tags:
+        - Key: Name
+          Value: 'target-group'
+
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: "HTTPS"
+      Certificates:
+        - CertificateArn: !Ref ACMArn
+      SslPolicy: "ELBSecurityPolicy-2016-08"
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: "HTTP"
+      DefaultActions:
+        - Type: "redirect"
+          RedirectConfig:
+            Protocol: "HTTPS"
+            Port: 443
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+
+  SSMRoleforInstance:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: AccessS3Bucket
+          PolicyDocument: 
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:*'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${KonveyorBackupBucket}'
+                  - !Sub 'arn:aws:s3:::${KonveyorBackupBucket}/*'
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+        - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+
+  InstanceProfileforSSM:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref SSMRoleforInstance
+
+  KonveyorBackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: TRUE
+        BlockPublicPolicy: TRUE
+        IgnorePublicAcls: TRUE
+        RestrictPublicBuckets: TRUE
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties: 
+      LaunchTemplateName: !Sub '${AWS::StackName}-LaunchTemplate'
+      LaunchTemplateData:
+        ImageId:
+          Fn::FindInMap:
+          - RegionMap
+          - Ref: AWS::Region
+          - ImageId
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile:
+          Name: !Ref InstanceProfileforSSM
+        SecurityGroupIds: 
+          - !Ref WebServerSecurityGroup
+        BlockDeviceMappings: 
+          - DeviceName: /dev/sda1
+            Ebs: 
+              VolumeType: gp3
+              VolumeSize: 150
+        EbsOptimized: true
+        UserData: 
+          Fn::Base64: 
+            Fn::Sub:
+            - |
+              #!/bin/bash
+              /opt/konveyor/install-microk8s.sh
+              # install healthcheck ingress to keep the instance running while we install software...
+              /opt/konveyor/ingress-definition.sh "${DomainForIngressRule}"
+              bash /opt/konveyor/install-olm.sh "v0.24.0"
+              bash /opt/konveyor/install-tackle.sh
+              echo "${BucketName}" > /opt/konveyor/backup-bucket
+              /opt/konveyor/perform-backup.sh
+            - DomainForIngressRule: !Ref Domain
+              Region: !Ref 'AWS::Region'
+              BucketName: !Ref KonveyorBackupBucket
+
+  WebServerAutoscalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties: 
+      AutoScalingGroupName: !Sub '${AWS::StackName}-WebServerASG'
+      AvailabilityZones: 
+        - !GetAtt PrivateSubnet1.AvailabilityZone
+      DefaultInstanceWarmup: 300
+      DesiredCapacity: "1"
+      HealthCheckType: "ELB"
+      HealthCheckGracePeriod: 600
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      MaxSize: "1"
+      MinSize: "1"
+      TargetGroupARNs: 
+        - !Ref TargetGroup
+      VPCZoneIdentifier: 
+        - !Ref PrivateSubnet1
+Outputs:
+  LoadBalancerCNAME:
+    Description: "Application LoadBalancer CNAME"
+    Value: !GetAtt ApplicationLoadBalancer.DNSName

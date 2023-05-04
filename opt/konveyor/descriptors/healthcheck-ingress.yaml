@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: healthcheck-app
+  labels:
+    app.kubernetes.io/name: healthcheck-app
+  namespace: default
+spec:
+  containers:
+  - name: busybox
+    image: public.ecr.aws/docker/library/busybox:latest
+    ports:
+    - containerPort: 8080
+    command: ['sh', '-c', 'mkdir healthcheck && echo "<html><body>OK<body></html>" > healthcheck/index.html && busybox httpd -f -vv -p 8080']
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: healthcheck
+  namespace: default
+spec:
+  selector:
+    app.kubernetes.io/name: healthcheck-app
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+    name: healthcheck-ingress
+    namespace: default
+spec:
+    rules:
+    - http:
+        paths:
+        - path: /healthcheck
+          pathType: Prefix
+          backend:
+            service:
+                name: healthcheck
+                port:
+                    number: 8080
