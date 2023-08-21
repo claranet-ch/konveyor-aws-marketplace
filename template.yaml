@@ -70,6 +70,10 @@ Parameters:
   InstanceType:
     Type: String
     Default: t3a.medium
+  LoadBalancerSecurityGroupCidr:
+    Type: String
+    Description: 'CIDR of the resources that are allowed to access the application (default: 0.0.0.0/0)'
+    Default: '0.0.0.0/0'
 
 Resources:
   Vpc:
@@ -232,11 +236,11 @@ Resources:
         - FromPort: 80
           ToPort: 80
           IpProtocol: tcp
-          CidrIp: '0.0.0.0/0'
+          CidrIp: !Ref LoadBalancerSecurityGroupCidr
         - FromPort: 443
           ToPort: 443
           IpProtocol: tcp
-          CidrIp: '0.0.0.0/0'
+          CidrIp: !Ref LoadBalancerSecurityGroupCidr
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-LoadBalancerSG'
@@ -252,8 +256,8 @@ Resources:
       HealthCheckPort: '80'
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 5
-      UnhealthyThresholdCount: 3
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 10
       Matcher:
         HttpCode: '200'
       TargetGroupAttributes:
@@ -292,6 +296,25 @@ Resources:
             Query: "#{query}"
             StatusCode: "HTTP_301"
 
+  #Secrets
+  KonveyorHubExportSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Sub '${AWS::StackName}-ExportUser'
+      Description: "Export User to back-up / restore konveyor configuration"
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "export-user"}'
+        GenerateStringKey: "password"
+        PasswordLength: 30
+        ExcludeCharacters: '"@/\'
+
+  KonveyorKeycloakAdminUser:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Sub '${AWS::StackName}-Keycloak'
+      Description: "Keycloak Admin access"
+      SecretString: '{"username": "admin"}'
+
   SSMRoleforInstance:
     Type: AWS::IAM::Role
     Properties:
@@ -315,6 +338,16 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:s3:::${KonveyorBackupBucket}'
                   - !Sub 'arn:aws:s3:::${KonveyorBackupBucket}/*'
+        - PolicyName: ManageSecrets
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:*'
+                Resource:
+                  - !Ref KonveyorHubExportSecret
+                  - !Ref KonveyorKeycloakAdminUser
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
         - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
@@ -340,7 +373,7 @@ Resources:
 
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
-    Properties: 
+    Properties:
       LaunchTemplateName: !Sub '${AWS::StackName}-LaunchTemplate'
       LaunchTemplateData:
         ImageId:
@@ -370,10 +403,16 @@ Resources:
               bash /opt/konveyor/install-olm.sh "v0.24.0"
               bash /opt/konveyor/install-tackle.sh
               echo "${BucketName}" > /opt/konveyor/backup-bucket
+              echo "${DomainForIngressRule}" > /opt/konveyor/domain
+              echo "${BackupUserArn}" > /opt/konveyor/backup-user
+              echo "${KeycloakAdminArn}" > /opt/konveyor/keycloak-admin
+              /opt/konveyor/restore-backup.sh
               /opt/konveyor/perform-backup.sh
             - DomainForIngressRule: !Ref Domain
               Region: !Ref 'AWS::Region'
               BucketName: !Ref KonveyorBackupBucket
+              BackupUserArn: !Ref KonveyorHubExportSecret
+              KeycloakAdminArn: !Ref KonveyorKeycloakAdminUser
 
   WebServerAutoscalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -394,6 +433,11 @@ Resources:
         - !Ref TargetGroup
       VPCZoneIdentifier: 
         - !Ref PrivateSubnet1
+      
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Konveyor'
+          PropagateAtLaunch: true
 Outputs:
   LoadBalancerCNAME:
     Description: "Application LoadBalancer CNAME"

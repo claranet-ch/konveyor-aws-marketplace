@@ -1,3 +1,0 @@
-#!/bin/sh
-/opt/konveyor/perform-backup.sh
-exit 0

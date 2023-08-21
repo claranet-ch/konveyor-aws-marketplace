@@ -43,8 +43,8 @@ build {
   ]
 
   provisioner "file" {
-    source      = "etc"
-    destination = "/tmp"
+    source      = "konveyor-db-backup"
+    destination = "/tmp/konveyor-db-backup"
   }
 
   provisioner "file" {
@@ -52,19 +52,27 @@ build {
     destination = "/tmp"
   }
 
+  provisioner "file" {
+    source      = "sources.list"
+    destination = "/tmp/sources.list"
+  }
+
   provisioner "shell" {
     inline = [
       "sudo mkdir -p /opt/konveyor",
       "sudo cp -r /tmp/konveyor/* /opt/konveyor",
-      "sudo cp /tmp/etc/apt/sources.list /etc/apt/sources.list",
+      "sudo cp /tmp/sources.list /etc/apt/sources.list",
       "sudo chmod a+x /opt/konveyor/*",
+      "sudo chmod a+x /opt/konveyor/cli/*",
       "sudo ln -s /opt/konveyor/kubectl /usr/bin/kubectl",
       "sudo rm -rf /var/lib/apt/lists/*",
       "sudo apt-get update",
       "sudo apt-get upgrade -y",
-      "sudo apt-get install jq awscli -y",
-      "sudo mv /tmp/etc/cron.daily/daily-db-backup /etc/cron.daily/",
-      "chmod a+x /etc/cron.daily/daily-db-backup"
+      "sudo apt-get install jq awscli python3-pip -y",
+      "sudo python3 -m pip install pyyaml pycryptodome",
+      "sudo mv /tmp/konveyor-db-backup /etc/cron.d/",
+      "sudo chown root:root /etc/cron.d/konveyor-db-backup",
+      "sudo chmod 644 /etc/cron.d/konveyor-db-backup"
     ]
   }
 
@@ -79,4 +87,5 @@ build {
     output     = "out/manifest.json"
     strip_path = true
   }
+
 }

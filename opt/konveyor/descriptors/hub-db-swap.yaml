@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hub-db-swap
+  namespace: konveyor-tackle
+spec:
+  template:
+    spec:
+      containers:
+        - name: swapper
+          image: keinos/sqlite3:latest
+          command: ['sh', '-c', 'rm -f /database/hub.db* && cat /database/hub.backup.sql | sqlite3 /database/hub.db']
+          volumeMounts:
+            - mountPath: "/database"
+              name: task-pv-storage
+      restartPolicy: Never
+      volumes:
+        - name: task-pv-storage
+          persistentVolumeClaim:
+            claimName: tackle-hub-database-volume-claim
+  backoffLimit: 4
