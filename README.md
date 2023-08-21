@@ -2,8 +2,7 @@
 
 This repo is being used by [Claranet Switzerland GmbH](https://claranet.ch) to produce a listing on the AWS Marketplace.
 
-> **Note**
-> listing is being reviewed, will add the link as soon as it's available
+You can find the listing [here](https://aws.amazon.com/marketplace/pp/prodview-3pur2yyywakts)
 
 The goal is to allow anyone to try Konveyor within their organization, even if they don't have a Kubernetes (EKS) cluster available.
 
