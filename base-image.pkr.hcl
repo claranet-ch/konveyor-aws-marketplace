@@ -43,7 +43,7 @@ build {
   ]
 
   provisioner "file" {
-    source      = "konveyor-db-backup"
+    source      = "etc/cron.d/konveyor-db-backup"
     destination = "/tmp/konveyor-db-backup"
   }
 
@@ -53,7 +53,7 @@ build {
   }
 
   provisioner "file" {
-    source      = "sources.list"
+    source      = "etc/apt/sources.list"
     destination = "/tmp/sources.list"
   }
 
