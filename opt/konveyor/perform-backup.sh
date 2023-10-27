@@ -43,7 +43,20 @@ fi
 aws s3 cp "/tmp/backup/${FILENAME_PREFIX}-pathfinder.sql.gz" "s3://${BACKUP_BUCKET}/pathfinder/${FILENAME_PREFIX}.sql.gz"
 
 HUB_POD=$(kubectl get pods -n konveyor-tackle --selector=app.kubernetes.io/name=tackle-hub --output=jsonpath={.items..metadata.name})
-kubectl exec -ti $HUB_POD -n konveyor-tackle -- sqlite3 /database/hub.db ".timeout 10000" ".dump" | tee /tmp/backup/${FILENAME_PREFIX}-hub.sql > /dev/null
-gzip /tmp/backup/${FILENAME_PREFIX}-hub.sql
 
-aws s3 cp "/tmp/backup/${FILENAME_PREFIX}-hub.sql.gz" "s3://${BACKUP_BUCKET}/hub/${FILENAME_PREFIX}.sql.gz"
+kubectl exec -ti $HUB_POD -n konveyor-tackle -- bash -c "rm -f /database/hub-bck.db && sqlite3 /database/hub.db \"VACUUM main INTO '/database/hub-bck.db';\" \".timeout 10000\""
+kubectl exec -ti $HUB_POD -n konveyor-tackle -- bash -c "base64 -w0 /database/hub-bck.db" | tee /tmp/backup/tmp.base64 > /dev/null
+base64 -d /tmp/backup/tmp.base64 > /tmp/backup/${FILENAME_PREFIX}-hub.db
+rm -f /tmp/backup/tmp.base64
+
+
+if [ -s /tmp/backup/${FILENAME_PREFIX}-hub.db ]; then
+    echo "check ${FILENAME_PREFIX}-hub.db"
+    BCKOK=$(sqlite3 /tmp/backup/${FILENAME_PREFIX}-hub.db "PRAGMA integrity_check")
+    if [ "${BCKOK}" = "ok" ]; then
+        echo "upload to s3"
+        aws s3 cp "/tmp/backup/${FILENAME_PREFIX}-hub.db" "s3://${BACKUP_BUCKET}/hub/${FILENAME_PREFIX}.db"
+    else
+        echo "${FILENAME_PREFIX} failed to create backup of sqllite" >> /opt/konveyor/bck-sqlite.log
+    fi
+fi

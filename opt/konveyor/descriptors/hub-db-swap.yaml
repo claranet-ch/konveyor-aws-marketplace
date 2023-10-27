@@ -9,13 +9,19 @@ spec:
       containers:
         - name: swapper
           image: keinos/sqlite3:latest
-          command: ['sh', '-c', 'rm -f /database/hub.db* && cat /database/hub.backup.sql | sqlite3 /database/hub.db']
+          command: ['sh', '-c', 'rm -f /database/hub.db* && cp /var/local/hub-restore.db /database/hub.db']
           volumeMounts:
             - mountPath: "/database"
               name: task-pv-storage
+            - mountPath: /var/local/hub-restore.db
+              name: sqlitedb-restore
       restartPolicy: Never
       volumes:
         - name: task-pv-storage
           persistentVolumeClaim:
             claimName: tackle-hub-database-volume-claim
+        - name: sqlitedb-restore
+          hostPath:
+            path: /tmp/restore/hub-restore.db
+            type: FileOrCreate
   backoffLimit: 4
