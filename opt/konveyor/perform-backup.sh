@@ -60,3 +60,5 @@ if [ -s /tmp/backup/${FILENAME_PREFIX}-hub.db ]; then
         echo "${FILENAME_PREFIX} failed to create backup of sqllite" >> /opt/konveyor/bck-sqlite.log
     fi
 fi
+#clean temporry folder
+rm -r -f /tmp/backup/
