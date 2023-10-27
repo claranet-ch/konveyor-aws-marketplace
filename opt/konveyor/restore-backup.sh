@@ -120,11 +120,10 @@ fi
 # restore Konveyor Hub database
 existing_backup=$(aws s3 ls "s3://$BACKUP_BUCKET/hub/" | awk '{print $4}' | sort -r | head -n 1)
 if [ "" != "$existing_backup" ]; then
-    aws s3 cp "s3://$BACKUP_BUCKET/hub/$existing_backup" "/tmp/restore/hub-${existing_backup}"
-    
-    # first, we copy the sqlite backup to the server
+    aws s3 cp "s3://$BACKUP_BUCKET/hub/$existing_backup" "/tmp/restore/hub-restore.db"
+
+    # get the hub pod
     HUB_POD=$(kubectl get pods -n konveyor-tackle --selector=app.kubernetes.io/name=tackle-hub --output=jsonpath={.items..metadata.name})
-    cat /tmp/restore/hub-${existing_backup} | gunzip | kubectl exec -i $HUB_POD -n konveyor-tackle -- tee /database/hub.backup.sql > /dev/null
     
     # then, we shut down tackle-hub temporarily
     kubectl scale deploy tackle-hub -n konveyor-tackle --replicas=0
