@@ -68,11 +68,12 @@ build {
       "sudo rm -rf /var/lib/apt/lists/*",
       "sudo apt-get update",
       "sudo apt-get upgrade -y",
-      "sudo apt-get install jq awscli python3-pip -y",
+      "sudo apt-get install jq awscli python3-pip sqlite3 -y",
       "sudo python3 -m pip install pyyaml pycryptodome",
       "sudo mv /tmp/konveyor-db-backup /etc/cron.d/",
       "sudo chown root:root /etc/cron.d/konveyor-db-backup",
-      "sudo chmod 644 /etc/cron.d/konveyor-db-backup"
+      "sudo chmod 644 /etc/cron.d/konveyor-db-backup",
+      "sudo /opt/konveyor/cli/install-operator-framework.sh"
     ]
   }
 

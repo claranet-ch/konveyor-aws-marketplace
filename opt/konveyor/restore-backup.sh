@@ -25,22 +25,6 @@ if [ "" != "$existing_backup" ]; then
     kubectl scale deploy tackle-keycloak-sso -n konveyor-tackle --replicas=1
 fi
 
-PATHFINDER_SECRET=$(kubectl get secret -n konveyor-tackle tackle-pathfinder-postgresql -o json | jq '.data')
-PATHFINDER_DBNAME=$(echo $PATHFINDER_SECRET | jq -r '."database-name"' | base64 -d)
-PATHFINDER_DBUSER=$(echo $PATHFINDER_SECRET | jq -r '."database-user"' | base64 -d)
-PATHFINDER_DBPASS=$(echo $PATHFINDER_SECRET | jq -r '."database-password"' | base64 -d)
-PATHFINDER_POD_NAME=$(kubectl get po -n konveyor-tackle --selector=app.kubernetes.io/name=tackle-pathfinder-postgresql | grep postgresql | awk '{print $1}')
-
-existing_backup=$(aws s3 ls "s3://$BACKUP_BUCKET/pathfinder/" | awk '{print $4}' | sort -r | head -n 1)
-if [ "" != "$existing_backup" ]; then
-    aws s3 cp "s3://$BACKUP_BUCKET/pathfinder/$existing_backup" "/tmp/restore/pathfinder-${existing_backup}"
-    kubectl scale deploy tackle-pathfinder -n konveyor-tackle --replicas=0
-    kubectl exec $PATHFINDER_POD_NAME -i -n konveyor-tackle -- /bin/bash -c "/usr/bin/dropdb ${PATHFINDER_DBNAME}; /usr/bin/createdb -O ${PATHFINDER_DBUSER} ${PATHFINDER_DBNAME}"
-    zcat "/tmp/restore/pathfinder-${existing_backup}" | kubectl exec $PATHFINDER_POD_NAME -i -n konveyor-tackle -- /bin/bash -c "/usr/bin/psql -U ${PATHFINDER_DBUSER} ${PATHFINDER_DBNAME}"
-    rm -f "/tmp/restore/pathfinder-${existing_backup}"
-    kubectl scale deploy tackle-pathfinder -n konveyor-tackle --replicas=1
-fi
-
 ## wait for keycloak to restart
 
 kubectl wait \
@@ -122,7 +106,7 @@ existing_backup=$(aws s3 ls "s3://$BACKUP_BUCKET/hub/" | awk '{print $4}' | sort
 if [ "" != "$existing_backup" ]; then
     aws s3 cp "s3://$BACKUP_BUCKET/hub/$existing_backup" "/tmp/restore/hub-restore.db"
 
-    # get the hub pod
+    #get the hub pod
     HUB_POD=$(kubectl get pods -n konveyor-tackle --selector=app.kubernetes.io/name=tackle-hub --output=jsonpath={.items..metadata.name})
     
     # then, we shut down tackle-hub temporarily

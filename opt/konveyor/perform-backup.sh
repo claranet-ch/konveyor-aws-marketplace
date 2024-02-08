@@ -25,25 +25,7 @@ if (( filesize < 100 )); then
 fi
 aws s3 cp "/tmp/backup/${FILENAME_PREFIX}-keycloak.sql.gz" "s3://${BACKUP_BUCKET}/keycloak/${FILENAME_PREFIX}.sql.gz"
 
-PATHFINDER_SECRET=$(kubectl get secret -n konveyor-tackle tackle-pathfinder-postgresql -o json | jq '.data')
-PATHFINDER_DBNAME=$(echo $PATHFINDER_SECRET | jq -r '."database-name"' | base64 -d)
-PATHFINDER_DBUSER=$(echo $PATHFINDER_SECRET | jq -r '."database-user"' | base64 -d)
-PATHFINDER_DBPASS=$(echo $PATHFINDER_SECRET | jq -r '."database-password"' | base64 -d)
-PATHFINDER_DBHOST="tackle-pathfinder-postgresql.konveyor-tackle.svc.cluster.local"
-PATHFINDER_POD_NAME=$(kubectl get po -n konveyor-tackle --selector=app.kubernetes.io/name=tackle-pathfinder-postgresql | grep postgresql | awk '{print $1}')
-
-kubectl exec $PATHFINDER_POD_NAME -n konveyor-tackle -- /bin/bash -c "/usr/bin/pg_dump --no-privileges --no-owner $PATHFINDER_DBNAME" | cat | gzip > "/tmp/backup/${FILENAME_PREFIX}-pathfinder.sql.gz"
-filesize=$(stat -c%s "/tmp/backup/${FILENAME_PREFIX}-pathfinder.sql.gz")
-
-if (( filesize < 100 )); then
-    echo "Pathfinder DB is not ready yet"
-    exit 1
-fi
-
-aws s3 cp "/tmp/backup/${FILENAME_PREFIX}-pathfinder.sql.gz" "s3://${BACKUP_BUCKET}/pathfinder/${FILENAME_PREFIX}.sql.gz"
-
 HUB_POD=$(kubectl get pods -n konveyor-tackle --selector=app.kubernetes.io/name=tackle-hub --output=jsonpath={.items..metadata.name})
-
 kubectl exec -ti $HUB_POD -n konveyor-tackle -- bash -c "rm -f /database/hub-bck.db && sqlite3 /database/hub.db \"VACUUM main INTO '/database/hub-bck.db';\" \".timeout 10000\""
 kubectl exec -ti $HUB_POD -n konveyor-tackle -- bash -c "base64 -w0 /database/hub-bck.db" | tee /tmp/backup/tmp.base64 > /dev/null
 base64 -d /tmp/backup/tmp.base64 > /tmp/backup/${FILENAME_PREFIX}-hub.db
@@ -60,5 +42,6 @@ if [ -s /tmp/backup/${FILENAME_PREFIX}-hub.db ]; then
         echo "${FILENAME_PREFIX} failed to create backup of sqllite" >> /opt/konveyor/bck-sqlite.log
     fi
 fi
-#clean temporry folder
+
+#clean temporary folder
 rm -r -f /tmp/backup/
